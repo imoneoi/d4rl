@@ -77,6 +77,8 @@ def main():
         maze = maze_env.HARDEST_MAZE
     elif args.maze == 'ultra':
         maze = maze_env.ULTRA_MAZE
+    elif args.maxe == 'extreme':
+        maze = maze_env.EXTREME_MAZE
     elif args.maze == 'umaze_eval':
         maze = maze_env.U_MAZE_EVAL
     elif args.maze == 'medium_eval':
