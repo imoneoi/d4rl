@@ -22,6 +22,7 @@ import math
 import numpy as np
 import gym
 from copy import deepcopy
+from tqdm import tqdm
 
 RESET = R = 'r'  # Reset position.
 GOAL = G = 'g'
@@ -65,7 +66,7 @@ ULTRA_MAZE = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
               [1, 1, 0, 1, 0, 0, 1, 0, 1, G, 0, 0, 0, 0, G, 1],
               [1, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1]]
 
-EXTREME_MAZE = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+EXTREME_MAZE = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
                 [1, R, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, G, G, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1], 
                 [1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1], 
                 [1, G, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, G, 1, 0, 0, 0, 1], 
@@ -134,7 +135,7 @@ ULTRA_MAZE_TEST = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]]
 
 # effective size 20 * 28
-EXTREME_MAZE_TEST = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+EXTREME_MAZE_TEST = [[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
                     [1, R, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1], 
                     [1, 0, 1, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 1, 1, 1, 0, 1], 
                     [1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1], 
@@ -344,7 +345,7 @@ class MazeEnv(gym.Env):
     else:
       self.target_goal = goal_input
     
-    print ('Target Goal: ', self.target_goal)
+    # tqdm.write (f'Target Goal: {self.target_goal}')
     ## Make sure that the goal used in self._goal is also reset:
     self._goal = self.target_goal
 
@@ -395,7 +396,8 @@ class MazeEnv(gym.Env):
     visited = {}
     to_visit = [target_rowcol]
     if self._maze_map[current_rowcol[0]][current_rowcol[1]] not in [0, RESET, GOAL]:
-        print()
+        # tqdm.write("Inside Obstacle")
+        pass
     while to_visit:
       next_visit = []
       for rowcol in to_visit:
@@ -438,8 +440,8 @@ class MazeEnv(gym.Env):
         target_x += robot_x  # Target is given in relative coordinates.
         target_y += robot_y
       target_row, target_col = self._xy_to_rowcol([target_x, target_y])
-      print ('Target: ', target_row, target_col, target_x, target_y)
-      print ('Robot: ', robot_row, robot_col, robot_x, robot_y)
+      # tqdm.write (f'Target: {target_row}, {target_col}, {target_x}, {target_y}')
+      # tqdm.write (f'Robot: {robot_row}, {robot_col}, {robot_x}, {robot_y}')
 
       waypoint_row, waypoint_col = self._get_best_next_rowcol(
           [robot_row, robot_col], [target_row, target_col])
@@ -453,8 +455,8 @@ class MazeEnv(gym.Env):
       goal_x = waypoint_x - robot_x
       goal_y = waypoint_y - robot_y
 
-      print ('Waypoint: ', waypoint_row, waypoint_col, waypoint_x, waypoint_y)
+      # tqdm.write (f'Waypoint: {waypoint_row}, {waypoint_col}, {waypoint_x}, {waypoint_y}')
 
-      return goal_reaching_policy_fn(obs, (goal_x, goal_y))
+      return goal_reaching_policy_fn(obs, (goal_x, goal_y)), (waypoint_row, waypoint_col)
 
     return policy_fn

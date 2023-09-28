@@ -9,6 +9,8 @@ import torch
 from PIL import Image
 import os
 
+from tqdm import tqdm
+
 
 def reset_data():
     return {'observations': [],
@@ -30,6 +32,12 @@ def append_data(data, s, a, r, tgt, done, timeout, env_data):
     data['infos/goal'].append(tgt)
     data['infos/qpos'].append(env_data.qpos.ravel().copy())
     data['infos/qvel'].append(env_data.qvel.ravel().copy())
+
+
+def extend_data(target, addition):
+    for k, v in target.items():
+        v.extend(addition[k])
+
 
 def npify(data):
     for k in data:
@@ -64,9 +72,11 @@ def main():
     parser.add_argument('--env', type=str, default='Ant', help='Environment type')
     parser.add_argument('--policy_file', type=str, default='policy_file', help='file_name')
     parser.add_argument('--max_episode_steps', default=1000, type=int)
+    parser.add_argument('--reset_thresh', default=200, type=int)
     parser.add_argument('--video', action='store_true')
     parser.add_argument('--multi_start', action='store_true')
     parser.add_argument('--multigoal', action='store_true')
+    parser.add_argument('--save-id', type=str, default="")
     args = parser.parse_args()
 
     if args.maze == 'umaze':
@@ -77,7 +87,7 @@ def main():
         maze = maze_env.HARDEST_MAZE
     elif args.maze == 'ultra':
         maze = maze_env.ULTRA_MAZE
-    elif args.maxe == 'extreme':
+    elif args.maze == 'extreme':
         maze = maze_env.EXTREME_MAZE
     elif args.maze == 'umaze_eval':
         maze = maze_env.U_MAZE_EVAL
@@ -89,7 +99,7 @@ def main():
         raise NotImplementedError
     
     if args.env == 'Ant':
-        env = NormalizedBoxEnv(ant.AntMazeEnv(maze_map=maze, maze_size_scaling=4.0, non_zero_reset=args.multi_start))
+        env = NormalizedBoxEnv(ant.AntMazeEnv(maze_map=maze, maze_size_scaling=4.0, non_zero_reset=args.multi_start, v2_resets=True))
     elif args.env == 'Swimmer':
         env = NormalizedBoxEnv(swimmer.SwimmerMazeEnv(mmaze_map=maze, maze_size_scaling=4.0, non_zero_reset=args.multi_start))
     else:
@@ -116,6 +126,7 @@ def main():
         return policy.get_action(new_obs)[0], (goal_tuple[0] + obs[0], goal_tuple[1] + obs[1])      
 
     data = reset_data()
+    cur_ep_data = reset_data()
 
     # create waypoint generating policy integrated with high level controller
     data_collection_policy = env.create_navigation_policy(
@@ -127,9 +138,23 @@ def main():
     
     ts = 0
     num_episodes = 0
-    for _ in range(args.num_samples):
+    pbar = tqdm(total=args.num_samples)
+    last_waypoint_rowcol = None
+    last_waypoint_rowcol_counter = 0
+    while True:
+        timeout = False
+
+        # Action
         try:
-            act, waypoint_goal = data_collection_policy(s)
+            (act, waypoint_goal), waypoint_rowcol = data_collection_policy(s)
+
+            if last_waypoint_rowcol == waypoint_rowcol:
+                last_waypoint_rowcol_counter += 1
+                if last_waypoint_rowcol_counter > args.reset_thresh:
+                    timeout = True
+            else:
+                last_waypoint_rowcol = waypoint_rowcol
+            
         except Exception as e:
             print(e)
             #curr_frame = env.physics.render(width=500, height=500, depth=False)
@@ -141,19 +166,27 @@ def main():
             act = np.clip(act, -1.0, 1.0)
 
         ns, r, done, info = env.step(act)
-        timeout = False
-        if ts >= args.max_episode_steps:
-            timeout = True
-            #done = True
-        
-        append_data(data, s[:-2], act, r, env.target_goal, done, timeout, env.physics.data)
-
-        if len(data['observations']) % 10000 == 0:
-            print(len(data['observations']))
 
         ts += 1
+        if ts >= args.max_episode_steps:
+            timeout = True
+
+        # Append data to cur episode
+        append_data(cur_ep_data, s[:-2], act, r, env.target_goal, done, timeout, env.physics.data)
 
         if done or timeout:
+            if done:
+                extend_data(data, cur_ep_data)
+                pbar.update(len(cur_ep_data["observations"]))
+
+                if len(data["observations"]) >= args.num_samples:
+                    break
+            
+            cur_ep_data = reset_data()
+            
+            last_waypoint_rowcol = None
+            last_waypoint_rowcol_counter = 0
+
             done = False
             ts = 0
             s = env.reset()
@@ -172,9 +205,10 @@ def main():
             frames.append(curr_frame)
     
     if args.noisy:
-        fname = args.env + '_maze_%s_noisy_multistart_%s_multigoal_%s.hdf5' % (args.maze, str(args.multi_start), str(args.multigoal))
+        fname = args.save_id + args.env + '_maze_%s_noisy_multistart_%s_multigoal_%s.hdf5' % (args.maze, str(args.multi_start), str(args.multigoal))
     else:
-        fname = args.env + 'maze_%s_multistart_%s_multigoal_%s.hdf5' % (args.maze, str(args.multi_start), str(args.multigoal))
+        fname = args.save_id + args.env + 'maze_%s_multistart_%s_multigoal_%s.hdf5' % (args.maze, str(args.multi_start), str(args.multigoal))
+
     dataset = h5py.File(fname, 'w')
     npify(data)
     for k in data:
